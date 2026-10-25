@@ -20,13 +20,19 @@ cars = {
     "GMC": {"Yukon": "يوكن", "Sierra": "سييرا", "Acadia": "أكاديا"}
 }
 
-# نرسل JSON ونستقبل JSON. عند فشل الاتصال نعرض رسالة واحدة.
+# نرسل JSON ونستقبل JSON، ونوضح سبب تعذّر الطلب.
 def send(url, data, headers=None):
     try:
         response = requests.post(url, json=data, headers=headers, timeout=90)
         response.raise_for_status()
         return response.json()
-    except (requests.RequestException, ValueError):
+    except requests.Timeout:
+        return {"error": "انتهت مهلة انتظار الخدمة. انتظر قليلًا ثم جرّب مرة ثانية."}
+    except requests.HTTPError as error:
+        return {"error": f"الخدمة أعادت خطأ HTTP {error.response.status_code}. تحقق من رابط الخدمة وسجلّها."}
+    except ValueError:
+        return {"error": "الخدمة أرسلت ردًا غير صالح بدل JSON."}
+    except requests.RequestException:
         return {"error": "تعذّر الاتصال بالخدمة. جرّب مرة ثانية."}
 
 @app.get("/")
@@ -43,7 +49,8 @@ def analyze(image: UploadFile = File()):
     photo = image.file.read(5 * 1024 * 1024 + 1)
     if not photo or len(photo) > 5 * 1024 * 1024:
         return {"error": "اختر صورة بحجم لا يتجاوز 5 MB."}
-    data = {"image": base64.b64encode(photo).decode("utf-8")}
+    encoded = base64.b64encode(photo).decode("utf-8")
+    data = {"image": f"data:{image.content_type};base64,{encoded}"}
     return send(ANALYSIS_API_URL, data)
 
 # كل طلب يبحث عن قطعة واحدة. الصفحة ترسل القطع المحددة بالترتيب.
